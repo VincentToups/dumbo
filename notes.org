@@ -1,0 +1,8 @@
+* define class
+  + (STATIC) add class info
+  - create member and method structs
+  - create indirection table for members and methods
+  - create initializer for members
+  - create method table 
+  - create new accessors
+  - create new method-invokers
