@@ -10,7 +10,11 @@
 (define-type -members-of-dumbo-object 
   extender: define-type-of--members-of-dumbo-object)
 (define-type -methods-of-dumbo-object
-  extender: define-type-of--methods-of-dumbo-object)
+  extender: define-type-of--methods-of-dumbo-object
+  (dumbo-init 
+   -methods-of-dumbo-object-dumbo-init
+   -methods-of-dumbo-object-dumbo-init-set!
+   init: #f))
 (define-type dumbo-object 
   extender: define-type-of-dumbo-object
   constructor: -make-dumbo-object
@@ -26,16 +30,40 @@
    (make-table test: eq?)
    (make-table test: eq?)))
 
-(define (-init-dumbo-object-method-table table)
-  table)
-(define (-init-dumbo-object-member-table table)
-  table)
-
 (at-expand-time-and-run-time 
  (define (create-global-setter-name field-name)
    (concat-symbols the-empty-symbol 
 				   (concat-symbols '- 'set field-name)
 				   '!)))
+
+(define (-dumbo-object-dumbo-init instance #!rest args)
+  (let ((member-indirection (dumbo-object-member-indirection instance))
+		(members (dumbo-object-members instance))) 
+	(let loop 
+		((args args)
+		 (args-count (length args)))
+	  (cond 
+	   ((= 0 args-count) instance)
+	   ((= 1 args-count) (error '(create-constructor-name class) "Odd number of init args should be key/value pairs."))
+	   (else 
+		(let ((key (create-global-setter-name (dumbo-thing->symbol (car args))))
+			  (val (cadr args))
+			  (args (cddr args)))
+		  ((table-ref member-indirection key) members val)
+		  (loop args (- args-count 2)))))))
+  instance)
+
+(define (-init-dumbo-object-method-table table)  
+  (-methods-of-dumbo-object-dumbo-init-set! table -dumbo-object-dumbo-init)
+  table)
+(define (-init-dumbo-object-member-table table)
+  table)
+
+(define (dumbo-init instance #!rest args)
+  (apply (-methods-of-dumbo-object-dumbo-init (dumbo-object-methods instance))
+		 instance args))
+
+
 
 (at-expand-time
 
@@ -346,7 +374,7 @@
 		 (error (string-append "A dumbo class called " (symbol->string class-name) " already exists."))
 		 (table-set! dumbo-class-info class-name (make-dumbo-class-info super-class members methods)))))
  
- (add-dumbo-class-info 'dumbo-object #f (list) (list))
+ (add-dumbo-class-info 'dumbo-object #f (list) (list 'dumbo-init))
 
  (define (concat-symbols delim #!rest args)
    (let ((delim (symbol->string delim))) 
@@ -573,17 +601,19 @@
 								,methods
 								,member-indirection
 								,method-indirection)))
-				(let ,loop ((,args ,args)
-							(,args-count (length ,args)))
-					 (cond 
-					  ((= 0 ,args-count) ,instance)
-					  ((= 1 ,args-count) (error ',(create-constructor-name class) "Odd number of init args, should be key/value pairs."))
-					  (else 
-					   (let ((,key (create-global-setter-name (dumbo-thing->symbol (car ,args))))
-							 (,val (cadr ,args))
-							 (,args (cddr ,args)))
-						 ((table-ref ,member-indirection ,key) ,members ,val)
-						 (,loop ,args (- ,args-count 2)))))))))))))
+				;; (let ,loop ((,args ,args)
+				;; 			(,args-count (length ,args)))
+				;; 	 (cond 
+				;; 	  ((= 0 ,args-count) ,instance)
+				;; 	  ((= 1 ,args-count) (error ',(create-constructor-name class) "Odd number of init args, should be key/value pairs."))
+				;; 	  (else 
+				;; 	   (let ((,key (create-global-setter-name (dumbo-thing->symbol (car ,args))))
+				;; 			 (,val (cadr ,args))
+				;; 			 (,args (cddr ,args)))
+				;; 		 ((table-ref ,member-indirection ,key) ,members ,val)
+				;; 		 (,loop ,args (- ,args-count 2))))))
+				(apply dumbo-init ,instance ,args)
+				,instance)))))))
 
  (define (create-getter-form class-name field-name)
    `(define (,(create-global-getter-name field-name) instance)
@@ -706,6 +736,7 @@
 			   ,(create-wrapper-type-definition class-name super-class)
 			   ,(create-wrapper-maker-definition class-name)
 			   )))
+	  ;;(pretty-print expansion) (newline)
 	  expansion)))
 
 

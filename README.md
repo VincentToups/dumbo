@@ -84,7 +84,14 @@ Examples
       members:
       ((define kenning ""))
       methods:
-      ((define (get-designator hero)
+      (;; dumbo-init is a dumbo-object method called immediately after     instance creation
+       ;; and initialization and which takes keyword/val pairs and sets    fields.
+       ;; here we override the method with custom behavior.
+       (define (dumbo-init instance #!rest keyvals)
+         (apply super-method instance keyvals)
+         (display "AHOY! A HERO AWAKENS.")
+         (newline))
+       (define (get-designator hero)
          (string-append (get-name hero) " " (get-kenning hero)))))
 
     (define a-hero (make-hero first-name: "Hrothgar" last-name: "Bornhold"  kenning: "The Kingslayer"))
