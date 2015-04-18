@@ -2,6 +2,11 @@
   (eval `(begin ,@exprs))
   `(begin #f))
 
+(define-macro (at-expand-time-and-run-time #!rest exprs)
+  `(begin 
+	 (at-expand-time ,@exprs)
+	 (begin ,@exprs)))
+
 (define-type -members-of-dumbo-object 
   extender: define-type-of--members-of-dumbo-object)
 (define-type -methods-of-dumbo-object
@@ -25,6 +30,12 @@
   table)
 (define (-init-dumbo-object-member-table table)
   table)
+
+(at-expand-time-and-run-time 
+ (define (create-global-setter-name field-name)
+   (concat-symbols the-empty-symbol 
+				   (concat-symbols '- 'set field-name)
+				   '!)))
 
 (at-expand-time
 
@@ -235,37 +246,16 @@
  (define (create-method-indirection-table-builder-name class-name)
    (concat-symbols '- the-empty-symbol class-name 'method-indirection-builder))
 
- (define (create-global-setter-name field-name)
-   (concat-symbols the-empty-symbol 
-				   (concat-symbols '- 'set field-name)
-				   '!))
+ ;; (define (create-global-setter-name field-name)
+ ;;   (concat-symbols the-empty-symbol 
+ ;; 				   (concat-symbols '- 'set field-name)
+ ;; 				   '!))
 
  (define (create-global-getter-name field-name)
    (concat-symbols '- 'get field-name))
 
  (define (create-global-method-name method-name)
    method-name)
-
- ;; (define (create-member-indirection-table-builder class-name)
- ;;   (let ((information (dumbo-class-member-getters-and-setters class-name))
- ;; 		 (tbl (gensym 'tbl)))
- ;; 	 `(define (,(create-member-indirection-table-builder-name class-name))
- ;; 		(let ((,tbl (make-table test: eq?)))
- ;; 			   ,@(let loop ((getters-and-setters information)
- ;; 							(forms '()))
- ;; 				   (if (empty? getters-and-setters)
- ;; 					   (reverse forms)
- ;; 					   (let* ((first (car getters-and-setters))
- ;; 							  (rest (cdr getters-and-setters))
- ;; 							  (field-name (car first))
- ;; 							  (global-setter (create-global-setter-name field-name))
- ;; 							  (global-getter (create-global-getter-name field-name))
- ;; 							  (local-setter (create-member-setter class-name field-name))
- ;; 							  (local-getter (create-member-getter class-name field-name)))
- ;; 						 (loop rest
- ;; 							   (cons (table-set! ,tbl ',global-setter ,local-setter)
- ;; 									 (cons (table-set! ,tbl ',global-getter ,local-getter) forms))))))
- ;; 			   ,tbl))))
 
  (define (create-member-indirection-table-builder class-name)
    (let ((information (dumbo-class-member-getters-and-setters class-name))
@@ -563,20 +553,37 @@
    (let ((methods (gensym 'methods))
 		 (members (gensym 'members))
 		 (method-indirection (gensym 'method-indirection))
-		 (member-indirection (gensym 'member-indirection)))
+		 (member-indirection (gensym 'member-indirection))
+		 (instance (gensym 'instance))
+		 (args (gensym 'args))
+		 (loop (gensym 'loop))
+		 (args-count (gensym 'args-count))
+		 (key (gensym 'key))
+		 (val (gensym 'val)))
 	 `(define ,(create-constructor-name class) 
 		(let* ((,methods (,(create-methods-table-constructor class)))
 			   (,method-indirection (,(create-method-indirection-table-builder-name class)))
 			   (,member-indirection (,(create-member-indirection-table-builder-name class)))) 
 		  (,(create-method-table-initializer-name class) ,methods)
-		  (lambda ()
+		  (lambda (#!rest ,args)
 			(let ((,members (,(create-members-table-constructor class))))
 			  (,(create-member-table-initializer-name class) ,members)			   
-			  (,(create-hidden-constructor-name class)
-			   ,members
-			   ,methods
-			   ,member-indirection
-			   ,method-indirection)))))))
+			  (let ((,instance  (,(create-hidden-constructor-name class)
+								,members
+								,methods
+								,member-indirection
+								,method-indirection)))
+				(let ,loop ((,args ,args)
+							(,args-count (length ,args)))
+					 (cond 
+					  ((= 0 ,args-count) ,instance)
+					  ((= 1 ,args-count) (error ',(create-constructor-name class) "Odd number of init args, should be key/value pairs."))
+					  (else 
+					   (let ((,key (create-global-setter-name (dumbo-thing->symbol (car ,args))))
+							 (,val (cadr ,args))
+							 (,args (cddr ,args)))
+						 ((table-ref ,member-indirection ,key) ,members ,val)
+						 (,loop ,args (- ,args-count 2)))))))))))))
 
  (define (create-getter-form class-name field-name)
    `(define (,(create-global-getter-name field-name) instance)
@@ -671,6 +678,11 @@
 
 )
 
+(define (dumbo-thing->symbol thing)
+  (cond 
+   ((symbol? thing) thing)
+   ((string? thing) (string->symbol thing))
+   ((keyword? thing) (string->symbol (keyword->string thing)))))
 
 (define-macro (define-class class-name #!key 
 				(super-class 'dumbo-object)
