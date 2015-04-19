@@ -31,8 +31,15 @@
    (make-table test: eq?)))
 
 (at-expand-time-and-run-time 
+ (define (concat-symbols delim #!rest args)
+   (let ((delim (symbol->string delim))) 
+	 (string->symbol
+	  (reduce (lambda (symbol acc-string)
+				(string-append acc-string delim (symbol->string symbol)))
+			  (cdr args)
+			  (symbol->string (car args))))))
  (define (create-global-setter-name field-name)
-   (concat-symbols the-empty-symbol 
+   (concat-symbols (string->symbol "") 
 				   (concat-symbols '- 'set field-name)
 				   '!)))
 
@@ -123,6 +130,8 @@
  (define dumbo-class-info (make-table test: eq?))
  (define dumbo-method-info (make-table test: eq?))
  (define dumbo-member-info (make-table test: eq?))
+
+ (table-set! dumbo-method-info 'dumbo-init #t)
 
  (define (global-method-exists? method-name)
    (table-ref dumbo-method-info method-name))
@@ -376,13 +385,13 @@
  
  (add-dumbo-class-info 'dumbo-object #f (list) (list 'dumbo-init))
 
- (define (concat-symbols delim #!rest args)
-   (let ((delim (symbol->string delim))) 
-	 (string->symbol
-	  (reduce (lambda (symbol acc-string)
-				(string-append acc-string delim (symbol->string symbol)))
-			  (cdr args)
-			  (symbol->string (car args))))))
+ ;; (define (concat-symbols delim #!rest args)
+ ;;   (let ((delim (symbol->string delim))) 
+ ;; 	 (string->symbol
+ ;; 	  (reduce (lambda (symbol acc-string)
+ ;; 				(string-append acc-string delim (symbol->string symbol)))
+ ;; 			  (cdr args)
+ ;; 			  (symbol->string (car args))))))
 
  (define (make-members-struct-name class-name)
    (concat-symbols '- '-members-of class-name))
@@ -548,11 +557,11 @@
 	  (,(create-member-table-initializer-name super-class-name) table)
 	  ,@(let loop ((slot-setups '())
 				   (members members))
-		  (let ((member (car members))
-				(members (cdr members))) 
-			(cond 
-			 ((empty? members) (reverse slot-setups))
-			 (else 
+		  (cond 
+		   ((empty? members) (reverse slot-setups))
+		   (else 
+			(let ((member (car members))
+				  (members (cdr members))) 
 			  (loop (cons `(,(create-member-setter (dumbo-class-which-declared-member class-name member) member) table (,(create-obfuscated-member-init-name class-name member))) slot-setups)
 					members)))))))
 
@@ -665,7 +674,8 @@
 				  (table-set! dumbo-method-info method-name #t)
 				  (loop rest
 						(cons (create-global-method-definition method-name)
-							  forms)))))))))
+							  forms)))
+				 (else (loop rest forms))))))))
 
  (define (create-local-method-form class-name method)
    (let* ((head (car method))
@@ -736,7 +746,7 @@
 			   ,(create-wrapper-type-definition class-name super-class)
 			   ,(create-wrapper-maker-definition class-name)
 			   )))
-	  ;;(pretty-print expansion) (newline)
+	  (pretty-print expansion) (newline)
 	  expansion)))
 
 
